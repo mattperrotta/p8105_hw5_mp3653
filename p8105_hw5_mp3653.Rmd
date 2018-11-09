@@ -9,15 +9,51 @@ output: github_document
 ```{r}
 library(tidyverse)
 ```
-
+#Problem 1
 ### Load Data and Create Dataset
 ```{r}
-study = list.files('./data/') %>% 
-  as.tibble()
+#file paths and file names
+study = tibble(file_path = list.files('./data/', pattern = '*.csv', full.names = TRUE), file_name = basename(file_path))
+```
 
+### Creating function to read in data
+```{r}
 read_data = function(data){
   
+  read_csv(file = data)
   
 }
+```
+
+### Read in the data
+```{r}
+study_data = study %>%
+  mutate(obs = map(file_path, read_data))
+```
+
+### Tidy data
+```{r}
+study_data = study_data %>% 
+  unnest() %>% 
+  gather(key = week, value = value, week_1:week_8) %>% 
+  mutate(id = str_replace(file_name, '.csv',''),
+         week = as.numeric(str_replace(week, 'week_', ''))) %>% 
+  separate(id, into = c('group', 'id'), sep = '_') %>% 
+  mutate(id = as.factor(id),
+         group = str_replace(group, 'con', 'control'),
+         group = str_replace(group, 'exp', 'exposed')
+         ) %>% 
+  select(-file_path, -file_name)
+```
+
+### Spaghetti plot of data
+```{r}
+
+```
+
+
+# Problem 2
+```{r}
+homocide_data = read_csv('https://raw.githubusercontent.com/washingtonpost/data-homicides/master/homicide-data.csv')
 ```
 

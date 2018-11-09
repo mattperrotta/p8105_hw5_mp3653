@@ -10,13 +10,13 @@ output: github_document
 library(tidyverse)
 ```
 #Problem 1
-### Load Data and Create Dataset
+Create Dataset with file names
 ```{r}
 #file paths and file names
 study = tibble(file_path = list.files('./data/', pattern = '*.csv', full.names = TRUE), file_name = basename(file_path))
 ```
 
-### Creating function to read in data
+Creating function to read in data
 ```{r}
 read_data = function(data){
   
@@ -25,35 +25,99 @@ read_data = function(data){
 }
 ```
 
-### Read in the data
+Read in the data
 ```{r}
 study_data = study %>%
   mutate(obs = map(file_path, read_data))
 ```
 
-### Tidy data
+Tidy data
 ```{r}
 study_data = study_data %>% 
   unnest() %>% 
+  janitor::clean_names() %>% 
   gather(key = week, value = value, week_1:week_8) %>% 
   mutate(id = str_replace(file_name, '.csv',''),
          week = as.numeric(str_replace(week, 'week_', ''))) %>% 
   separate(id, into = c('group', 'id'), sep = '_') %>% 
-  mutate(id = as.factor(id),
-         group = str_replace(group, 'con', 'control'),
-         group = str_replace(group, 'exp', 'exposed')
-         ) %>% 
+  mutate(group = str_replace(group, 'con', 'control'),
+         group = str_replace(group, 'exp', 'exposed')) %>% 
   select(-file_path, -file_name)
 ```
 
 ### Spaghetti plot of data
 ```{r}
-
+study_data %>% 
+  ggplot(aes(x = week, y = value, color = id)) +
+  geom_line() +
+  facet_grid(~group) +
+  labs(
+    title = 'Exposed vs. Control Over 8 Week Period'
+  )
 ```
+Over the 8 week period, there is a general increase in values for the exposed group while for the control group the values remain relatively the same.
 
 
 # Problem 2
+### Import and Clean Data
 ```{r}
-homocide_data = read_csv('https://raw.githubusercontent.com/washingtonpost/data-homicides/master/homicide-data.csv')
+homicide_data = read_csv('https://raw.githubusercontent.com/washingtonpost/data-homicides/master/homicide-data.csv') %>%
+  janitor::clean_names() %>% 
+  unite(city_state, c(city, state), sep = ", ", remove = FALSE)
+```
+
+The `homicide_data` dataset contains `r nrow(homicide_data)` rows of observations for `r nrow(distinct(homicide_data, city))` US cities. There are `r ncol(homicide_data)` variables in the dataset, giving the date of the event, victim info (name, race, age, and sex), and location (city, state, and long + lat). There is also a variable `disposition` describing the current status of the investigation into the homicide.
+
+Total number of homicides and unsolved homicides
+```{r}
+homicide_data_new = homicide_data %>% 
+  group_by(city_state) %>% 
+  mutate(total_homicides = n()) %>% 
+  filter(disposition %in% c('Closed without arrest', 'Open/No arrest')) %>%
+  mutate(unsolved_homicides = n()) %>% 
+  select(city_state, unsolved_homicides, total_homicides) %>% 
+  distinct()
+```
+
+proportion of unsolved murders in Baltimore
+```{r}
+baltimore = homicide_data_new %>% 
+  filter(city_state == 'Baltimore, MD')
+
+prop_baltimore = prop.test(baltimore[[2]], baltimore[[3]]) %>% 
+  broom::tidy() %>%  
+  select(estimate, conf.low, conf.high)
+
+prop_baltimore
+```
+
+estimates anf CI's for all cities
+```{r}
+prop = function(unsolved, total){
+  
+  prop.test(unsolved, total) %>% 
+    broom::tidy() %>%  
+    select(estimate, conf.low, conf.high)
+    
+}
+
+prop_cities = homicide_data_new %>% 
+  mutate(prop = map2(unsolved_homicides, total_homicides, prop)) %>% 
+  unnest() %>% 
+  ungroup()
+```
+
+plot of estimates and CI's for all cities
+```{r}
+prop_cities %>% 
+  mutate(city_state = as.factor(city_state)) %>% 
+  mutate(city_State = fct_reorder(city_state, estimate)) %>% 
+  ggplot(aes(x = city_state, y = estimate)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  labs(
+    title = 'Estimated Proportion of Unsolved Murders with Confidence Intervals'
+  )
 ```
 
